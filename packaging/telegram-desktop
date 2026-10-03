@@ -1,0 +1,10 @@
+#!/bin/sh
+# Telegram Desktop: официальная arm64-сборка, перепакованная из snap.
+# В LD_LIBRARY_PATH попадает только каталог с добранными библиотеками;
+# libc, libm и ld-linux всегда системные.
+TG=/opt/telegram-desktop
+export LD_LIBRARY_PATH="$TG/libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+if [ -z "${QT_QPA_PLATFORM:-}" ] && [ -n "${WAYLAND_DISPLAY:-}" ]; then
+    export QT_QPA_PLATFORM=wayland
+fi
+exec "$TG/app/usr/bin/telegram-desktop" "$@"

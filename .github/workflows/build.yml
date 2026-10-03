@@ -1,0 +1,77 @@
+name: build
+
+on:
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Версия snap (пусто — текущая stable)"
+        required: false
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04-arm
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      CONTAINER_ENGINE: docker
+      DEB_MAINTAINER: "${{ github.repository_owner }} <${{ github.repository_owner }}@users.noreply.github.com>"
+      VERSION_INPUT: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Инструменты
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends squashfs-tools jq dpkg-dev gnupg
+
+      - name: Нужна ли сборка
+        id: check
+        run: |
+          version=$(./build.sh ${VERSION_INPUT:+--version "$VERSION_INPUT"} --print-version)
+          echo "version=$version" >>"$GITHUB_OUTPUT"
+          asset="telegram-desktop-arm64_${version}_arm64.deb"
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            echo "Ручной запуск: собираю $version"
+            echo "build=true" >>"$GITHUB_OUTPUT"
+          elif gh release view repo --json assets --jq '.assets[].name' 2>/dev/null | grep -qxF "$asset"; then
+            echo "$version уже опубликована"
+            echo "build=false" >>"$GITHUB_OUTPUT"
+          else
+            echo "Новая версия: $version"
+            echo "build=true" >>"$GITHUB_OUTPUT"
+          fi
+
+      - name: Сборка
+        if: steps.check.outputs.build == 'true'
+        run: ./build.sh ${VERSION_INPUT:+--version "$VERSION_INPUT"}
+
+      - name: Smoke-тест
+        if: steps.check.outputs.build == 'true'
+        run: scripts/smoke-test.sh dist/*.deb
+
+      - name: Публикация
+        if: steps.check.outputs.build == 'true'
+        env:
+          APT_SIGNING_KEY: ${{ secrets.APT_SIGNING_KEY }}
+          APT_SIGNING_KEY_PASSPHRASE: ${{ secrets.APT_SIGNING_KEY_PASSPHRASE }}
+        run: |
+          if [ -z "$APT_SIGNING_KEY" ]; then
+            echo "::error::Секрет APT_SIGNING_KEY не задан — публиковать нечем"
+            exit 1
+          fi
+          export GNUPGHOME=$(mktemp -d)
+          chmod 700 "$GNUPGHOME"
+          gpg --batch --import <<<"$APT_SIGNING_KEY"
+          scripts/publish.sh dist/*.deb
+          rm -rf "$GNUPGHOME"

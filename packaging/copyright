@@ -1,0 +1,17 @@
+Telegram Desktop
+  Copyright (c) 2014-2026 The Telegram Desktop Authors.
+  License: GPL-3 with OpenSSL exception
+  Source: https://github.com/telegramdesktop/tdesktop
+  Legal: https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
+
+The binary in /opt/telegram-desktop/app is the unmodified content of the
+official "telegram-desktop" arm64 snap published by Telegram FZ-LLC in the
+snap store. On Debian and Ubuntu systems the full text of the GNU General
+Public License version 3 can be found in /usr/share/common-licenses/GPL-3.
+
+Libraries in /opt/telegram-desktop/libs are unmodified files from Ubuntu
+packages (or from the snap itself); their origin and versions are listed in
+bundled-libs.txt next to this file. Their sources and licenses are available
+from the Ubuntu archive (https://packages.ubuntu.com/).
+
+The packaging scripts live in the repository this package was published from.

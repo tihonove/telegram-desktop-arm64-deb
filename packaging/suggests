@@ -1,0 +1,5 @@
+# Необязательное: тянет за собой демоны (geoclue, avahi), поэтому не в Recommends.
+# libwebkit2gtk — встроенный браузер для мини-приложений ботов;
+# libgeoclue — определение местоположения.
+libwebkit2gtk-4.1-0
+libgeoclue-2-0

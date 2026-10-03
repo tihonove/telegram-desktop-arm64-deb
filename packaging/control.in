@@ -1,0 +1,21 @@
+Package: telegram-desktop-arm64
+Version: @VERSION@
+Architecture: arm64
+Maintainer: @MAINTAINER@
+Installed-Size: @INSTALLED_SIZE@
+Depends: @DEPENDS@
+Recommends: @RECOMMENDS@
+Suggests: @SUGGESTS@
+Conflicts: telegram-desktop
+Replaces: telegram-desktop
+Provides: telegram-desktop (= @VERSION@)
+Section: net
+Priority: optional
+Homepage: https://desktop.telegram.org/
+Description: Telegram Desktop (unofficial repack of the official arm64 snap)
+ Official Telegram Desktop arm64 binary taken from the snap store
+ (snap revision @SNAP_REVISION@) and repacked as a .deb, so that it runs
+ without snapd. Libraries missing in the target Ubuntu release are bundled
+ in /opt/telegram-desktop/libs.
+ .
+ This package is not built or endorsed by Telegram.

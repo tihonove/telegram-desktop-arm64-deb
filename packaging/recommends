@@ -1,0 +1,12 @@
+# Библиотеки, которые Telegram грузит через dlopen (ldd их не видит), и
+# окружение, без которого он работает хуже. В Recommends попадают только те
+# пакеты из списка, что существуют в целевом релизе.
+xdg-desktop-portal
+xdg-utils
+desktop-file-utils
+libgl1
+libgbm1
+libdrm2
+libva2
+libva-drm2
+libva-x11-2
