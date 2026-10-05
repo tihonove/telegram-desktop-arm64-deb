@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Версия snap (пусто — текущая stable)"
+        description: "Snap version (empty: current stable)"
         required: false
   push:
     branches: [main]
@@ -30,44 +30,44 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Инструменты
+      - name: Tools
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq --no-install-recommends squashfs-tools jq dpkg-dev gnupg
 
-      - name: Нужна ли сборка
+      - name: Check whether a build is needed
         id: check
         run: |
           version=$(./build.sh ${VERSION_INPUT:+--version "$VERSION_INPUT"} --print-version)
           echo "version=$version" >>"$GITHUB_OUTPUT"
           asset="telegram-desktop-arm64_${version}_arm64.deb"
           if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
-            echo "Ручной запуск: собираю $version"
+            echo "Manual run: building $version"
             echo "build=true" >>"$GITHUB_OUTPUT"
           elif gh release view repo --json assets --jq '.assets[].name' 2>/dev/null | grep -qxF "$asset"; then
-            echo "$version уже опубликована"
+            echo "$version is already published"
             echo "build=false" >>"$GITHUB_OUTPUT"
           else
-            echo "Новая версия: $version"
+            echo "New version: $version"
             echo "build=true" >>"$GITHUB_OUTPUT"
           fi
 
-      - name: Сборка
+      - name: Build
         if: steps.check.outputs.build == 'true'
         run: ./build.sh ${VERSION_INPUT:+--version "$VERSION_INPUT"}
 
-      - name: Smoke-тест
+      - name: Smoke test
         if: steps.check.outputs.build == 'true'
         run: scripts/smoke-test.sh dist/*.deb
 
-      - name: Публикация
+      - name: Publish
         if: steps.check.outputs.build == 'true'
         env:
           APT_SIGNING_KEY: ${{ secrets.APT_SIGNING_KEY }}
           APT_SIGNING_KEY_PASSPHRASE: ${{ secrets.APT_SIGNING_KEY_PASSPHRASE }}
         run: |
           if [ -z "$APT_SIGNING_KEY" ]; then
-            echo "::error::Секрет APT_SIGNING_KEY не задан — публиковать нечем"
+            echo "::error::APT_SIGNING_KEY secret is not set; nothing to sign with"
             exit 1
           fi
           export GNUPGHOME=$(mktemp -d)

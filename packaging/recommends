@@ -1,6 +1,6 @@
-# Библиотеки, которые Telegram грузит через dlopen (ldd их не видит), и
-# окружение, без которого он работает хуже. В Recommends попадают только те
-# пакеты из списка, что существуют в целевом релизе.
+# Libraries Telegram loads via dlopen (invisible to ldd) and the environment
+# it works worse without. Only the listed packages that exist in the target
+# release go into Recommends.
 xdg-desktop-portal
 xdg-utils
 desktop-file-utils

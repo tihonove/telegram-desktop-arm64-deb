@@ -1,7 +1,7 @@
 #!/bin/sh
-# Telegram Desktop: официальная arm64-сборка, перепакованная из snap.
-# В LD_LIBRARY_PATH попадает только каталог с добранными библиотеками;
-# libc, libm и ld-linux всегда системные.
+# Telegram Desktop: the official arm64 build, repacked from the snap.
+# Only the directory with the supplemented libraries goes into LD_LIBRARY_PATH;
+# libc, libm and ld-linux always come from the system.
 TG=/opt/telegram-desktop
 export LD_LIBRARY_PATH="$TG/libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 if [ -z "${QT_QPA_PLATFORM:-}" ] && [ -n "${WAYLAND_DISPLAY:-}" ]; then

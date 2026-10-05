@@ -1,26 +1,26 @@
 #!/usr/bin/env bash
-# Перепаковывает официальный arm64-snap Telegram Desktop в .deb.
-# Одинаково работает локально (podman) и в CI (docker).
+# Repacks the official Telegram Desktop arm64 snap into a .deb.
+# Works the same locally (podman) and in CI (docker).
 set -euo pipefail
 
 usage() {
     cat <<'EOF'
-Использование: ./build.sh [опции]
+Usage: ./build.sh [options]
 
-  (без опций)          собрать текущую stable-версию из snap-стора
-  --version X.Y.Z      собрать указанную версию (должна быть в одном из каналов стора)
-  --channel NAME       канал стора (по умолчанию stable)
-  --snap URL|ФАЙЛ      взять готовый .snap вместо запроса к стору
-  --print-version      только напечатать версию будущего пакета и выйти
+  (no options)         build the current stable version from the Snap Store
+  --version X.Y.Z      build the given version (must be in one of the store channels)
+  --channel NAME       store channel (default: stable)
+  --snap URL|FILE      use an existing .snap instead of querying the store
+  --print-version      only print the version of the package to be built and exit
 
-Переменные окружения:
-  CONTAINER_ENGINE     podman или docker (по умолчанию — что найдётся)
-  PKGREV               ревизия перепаковки (по умолчанию из файла PKGREV)
-  DEB_MAINTAINER       поле Maintainer
-  TARGET_IMAGE         образ целевой системы (ubuntu:26.04)
-  DONOR_IMAGE          образ, из репозиториев которого добираются библиотеки (ubuntu:24.04)
+Environment variables:
+  CONTAINER_ENGINE     podman or docker (default: whichever is found)
+  PKGREV               repack revision (default: from the PKGREV file)
+  DEB_MAINTAINER       the Maintainer field
+  TARGET_IMAGE         target system image (ubuntu:26.04)
+  DONOR_IMAGE          image whose repositories supply missing libraries (ubuntu:24.04)
 
-Результат: dist/telegram-desktop-arm64_<версия>-<ревизия>_arm64.deb
+Output: dist/telegram-desktop-arm64_<version>-<revision>_arm64.deb
 EOF
 }
 
@@ -32,8 +32,8 @@ PKGREV=${PKGREV:-$(tr -d '[:space:]' <"$ROOT/PKGREV")}
 DEB_MAINTAINER=${DEB_MAINTAINER:-"telegram-desktop-arm64-deb (unofficial repack) <noreply@github.com>"}
 TARGET_IMAGE=${TARGET_IMAGE:-docker.io/library/ubuntu:26.04}
 DONOR_IMAGE=${DONOR_IMAGE:-docker.io/library/ubuntu:24.04}
-# Эти библиотеки в пакет не попадают никогда: чужая glibc в LD_LIBRARY_PATH
-# ломает всё, что запускается следом.
+# These libraries never go into the package: a foreign glibc in LD_LIBRARY_PATH
+# breaks everything launched afterwards.
 FORBIDDEN='^(ld-linux.*|libc|libm|libdl|libpthread|librt|libresolv|libutil|libnsl|libanl|libBrokenLocale|libstdc\+\+|libgcc_s)\.so'
 
 WORK=$ROOT/work
@@ -55,9 +55,9 @@ while [ $# -gt 0 ]; do
 done
 
 log() { printf '\033[1m==> %s\033[0m\n' "$*" >&2; }
-die() { echo "ОШИБКА: $*" >&2; exit 1; }
+die() { echo "ERROR: $*" >&2; exit 1; }
 
-# Печатает "version revision url sha3-384" для arm64-сборки из стора
+# Prints "version revision url sha3-384" for the arm64 build from the store
 store_lookup() {
     curl -fsS -H 'Snap-Device-Series: 16' -H 'Snap-Device-Architecture: arm64' \
         "https://api.snapcraft.io/v2/snaps/info/$SNAP_NAME?fields=download,version,revision" \
@@ -71,21 +71,21 @@ store_lookup() {
 snap_version= snap_revision= snap_url= snap_sha=
 if [ -z "$snap_src" ]; then
     read -r snap_version snap_revision snap_url snap_sha < <(store_lookup) || true
-    [ -n "$snap_version" ] || die "в сторе нет arm64-сборки (канал '$channel', версия '${want_version:-любая}')"
+    [ -n "$snap_version" ] || die "no arm64 build in the store (channel '$channel', version '${want_version:-any}')"
 fi
 
 if [ "$print_version" = 1 ]; then
-    [ -n "$snap_version" ] || die "--print-version не работает вместе с --snap"
+    [ -n "$snap_version" ] || die "--print-version does not work with --snap"
     echo "$snap_version-$PKGREV"
     exit 0
 fi
 
-[ "$(uname -m)" = aarch64 ] || die "сборка рассчитана на arm64-хост (ldd гоняется в arm64-контейнере)"
+[ "$(uname -m)" = aarch64 ] || die "the build requires an arm64 host (ldd runs in an arm64 container)"
 for tool in curl jq unsquashfs dpkg-deb openssl; do
-    command -v "$tool" >/dev/null || die "не найден $tool"
+    command -v "$tool" >/dev/null || die "$tool not found"
 done
 ENGINE=${CONTAINER_ENGINE:-$(command -v podman || command -v docker || true)}
-[ -n "$ENGINE" ] || die "нужен podman или docker"
+[ -n "$ENGINE" ] || die "podman or docker is required"
 
 mkdir -p "$WORK/cache" "$DIST"
 
@@ -95,41 +95,41 @@ if [ -n "$snap_src" ]; then
         snap_file=$(realpath "$snap_src")
     else
         snap_file=$WORK/cache/custom.snap
-        log "Скачиваю $snap_src"
+        log "Downloading $snap_src"
         curl -fL --retry 3 -o "$snap_file" "$snap_src"
     fi
 else
     snap_file=$WORK/cache/${SNAP_NAME}_${snap_revision}.snap
     if [ ! -f "$snap_file" ]; then
-        log "Скачиваю snap $snap_version (ревизия $snap_revision)"
+        log "Downloading snap $snap_version (revision $snap_revision)"
         curl -fL --retry 3 -o "$snap_file.part" "$snap_url"
         mv "$snap_file.part" "$snap_file"
     fi
     actual=$(openssl dgst -sha3-384 -r "$snap_file" | cut -d' ' -f1)
-    [ "$actual" = "$snap_sha" ] || { rm -f "$snap_file"; die "sha3-384 скачанного snap не совпадает с заявленным"; }
+    [ "$actual" = "$snap_sha" ] || { rm -f "$snap_file"; die "sha3-384 of the downloaded snap does not match the expected one"; }
 fi
 
 STAGE=$WORK/stage
 rm -rf "$STAGE" "$WORK/pkgroot"
 mkdir -p "$STAGE/libs"
-log "Распаковываю snap"
+log "Unpacking snap"
 unsquashfs -q -n -d "$STAGE/app" "$snap_file"
-[ -x "$STAGE/app/usr/bin/telegram-desktop" ] || die "в snap нет usr/bin/telegram-desktop"
+[ -x "$STAGE/app/usr/bin/telegram-desktop" ] || die "snap has no usr/bin/telegram-desktop"
 
-# версия и архитектура — из самого snap, чтобы --snap работал без стора
+# version and architecture come from the snap itself so that --snap works without the store
 snap_version=$(sed -n 's/^version: *//p' "$STAGE/app/meta/snap.yaml" | tr -d "'\"")
-grep -qx -- '- arm64' "$STAGE/app/meta/snap.yaml" || die "snap собран не под arm64"
+grep -qx -- '- arm64' "$STAGE/app/meta/snap.yaml" || die "snap is not built for arm64"
 snap_revision=${snap_revision:-unknown}
 VERSION=$snap_version-$PKGREV
 : >"$STAGE/bundled-libs.txt"
 
-# --- 2. недостающие библиотеки ----------------------------------------------
+# --- 2. missing libraries --------------------------------------------------
 target=tgbuild-target-$$
 donor=tgbuild-donor-$$
 cleanup() { "$ENGINE" rm -f "$target" "$donor" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
-log "Поднимаю контейнеры: $TARGET_IMAGE (целевая система), $DONOR_IMAGE (донор библиотек)"
+log "Starting containers: $TARGET_IMAGE (target system), $DONOR_IMAGE (library donor)"
 for pair in "$target=$TARGET_IMAGE" "$donor=$DONOR_IMAGE"; do
     "$ENGINE" run -d --rm --name "${pair%%=*}" \
         -v "$STAGE:/work" -v "$ROOT/scripts:/scripts:ro" \
@@ -140,21 +140,21 @@ in_donor() { "$ENGINE" exec "$donor" /scripts/container-helper.sh "$@"; }
 
 in_target setup &
 in_donor setup &
-wait -n && wait -n || die "не удалось подготовить контейнеры"
+wait -n && wait -n || die "failed to prepare containers"
 
-log "Вычисляю недостающие библиотеки"
+log "Resolving missing libraries"
 for round in $(seq 1 20); do
     mapfile -t missing < <(in_target missing)
     [ ${#missing[@]} -gt 0 ] || break
     for so in "${missing[@]}"; do
-        [[ ! $so =~ $FORBIDDEN ]] || die "$so не найдена в целевой системе — бандлить её нельзя"
+        [[ ! $so =~ $FORBIDDEN ]] || die "$so not found in the target system and must not be bundled"
     done
 
-    # сначала — из репозиториев целевой системы (уйдёт в Depends)
+    # first, from the target system repositories (goes to Depends)
     mapfile -t missing < <(in_target provide "${missing[@]}")
     [ ${#missing[@]} -gt 0 ] || continue
 
-    # потом — из самого snap
+    # then, from the snap itself
     foreign=()
     for so in "${missing[@]}"; do
         if [ -e "$STAGE/app/usr/lib/$TRIPLET/$so" ]; then
@@ -166,15 +166,15 @@ for round in $(seq 1 20); do
         fi
     done
 
-    # остальное — из .deb донорского релиза
+    # the rest, from .debs of the donor release
     [ ${#foreign[@]} -eq 0 ] || in_donor fetch "${foreign[@]}"
 done
 left=$(in_target missing)
-[ -z "$left" ] || die "зависимости не сошлись: $(echo $left)"
+[ -z "$left" ] || die "unresolved dependencies: $(echo $left)"
 
 mapfile -t depends < <(in_target depends)
-[ ${#depends[@]} -gt 0 ] || die "не удалось вычислить Depends"
-# из списков берём только пакеты, существующие в целевом релизе
+[ ${#depends[@]} -gt 0 ] || die "failed to compute Depends"
+# take only the listed packages that exist in the target release
 existing() { grep -v '^#' "$1" | xargs "$ENGINE" exec "$target" /scripts/container-helper.sh existing; }
 mapfile -t recommends < <(existing "$ROOT/packaging/recommends")
 mapfile -t suggests < <(existing "$ROOT/packaging/suggests")
@@ -182,23 +182,23 @@ in_target chown
 cleanup
 
 if find "$STAGE/libs" -mindepth 1 -printf '%f\n' | grep -E "$FORBIDDEN"; then
-    die "в libs попала системная библиотека из запрещённого списка"
+    die "a forbidden system library ended up in libs"
 fi
 sort -o "$STAGE/bundled-libs.txt" "$STAGE/bundled-libs.txt"
-log "Забандлено: $(wc -l <"$STAGE/bundled-libs.txt") библиотек; Depends: ${#depends[@]} пакетов"
+log "Bundled: $(wc -l <"$STAGE/bundled-libs.txt") libraries; Depends: ${#depends[@]} packages"
 
-# --- 3. дерево пакета --------------------------------------------------------
-log "Собираю дерево пакета"
+# --- 3. package tree --------------------------------------------------------
+log "Assembling package tree"
 P=$WORK/pkgroot
 mkdir -p "$P/opt/telegram-desktop" "$P/usr/bin" "$P/usr/share/applications" "$P/usr/share/doc/$PKG" "$P/DEBIAN"
-rmdir "$STAGE/app/gpu-2404" 2>/dev/null || true # пустая точка монтирования content-снапа
+rmdir "$STAGE/app/gpu-2404" 2>/dev/null || true # empty mount point of the content snap
 mv "$STAGE/app" "$STAGE/libs" "$P/opt/telegram-desktop/"
 install -m 755 "$ROOT/packaging/telegram-desktop" "$P/usr/bin/telegram-desktop"
 install -m 644 "$ROOT/packaging/org.telegram.desktop.desktop" "$P/usr/share/applications/"
 install -m 644 "$ROOT/packaging/copyright" "$STAGE/bundled-libs.txt" "$P/usr/share/doc/$PKG/"
 
-# Иконки: в snap они названы snap.telegram-desktop.*, а Telegram и .desktop
-# ищут org.telegram.desktop*
+# Icons: in the snap they are named snap.telegram-desktop.*, while Telegram and
+# the .desktop file look for org.telegram.desktop*
 icons_src=$P/opt/telegram-desktop/app/usr/share/icons/hicolor
 while IFS= read -r -d '' icon; do
     rel=${icon#"$icons_src/"}
@@ -206,7 +206,7 @@ while IFS= read -r -d '' icon; do
     install -D -m 644 "$icon" "$P/usr/share/icons/hicolor/$(dirname "$rel")/org.telegram.desktop${name#snap.telegram-desktop.}"
 done < <(find "$icons_src" -type f -name 'snap.telegram-desktop.*' -print0)
 for icon in symbolic/apps/org.telegram.desktop{,-mute,-attention}-symbolic.svg 256x256/apps/org.telegram.desktop.png; do
-    [ -f "$P/usr/share/icons/hicolor/$icon" ] || die "в snap нет ожидаемой иконки ($icon) — проверь раскладку"
+    [ -f "$P/usr/share/icons/hicolor/$icon" ] || die "expected icon ($icon) missing from snap; check the layout"
 done
 
 find "$P" -type d -exec chmod 755 {} +
@@ -225,7 +225,7 @@ sed -e "s|@VERSION@|$VERSION|g" \
 
 # --- 4. .deb -----------------------------------------------------------------
 deb=$DIST/${PKG}_${VERSION}_arm64.deb
-log "Упаковываю $(basename "$deb")"
+log "Packing $(basename "$deb")"
 dpkg-deb --root-owner-group -Zxz --build "$P" "$deb" >&2
 rm -rf "$P" "$STAGE"
 echo "$deb"

@@ -1,26 +1,26 @@
 #!/usr/bin/env bash
-# Превращает каталог с .deb в плоский подписанный apt-репозиторий:
-# Packages, Packages.gz, Release, InRelease, Release.gpg и публичный ключ.
-# Оставляет KEEP последних версий, остальные .deb удаляет из каталога.
+# Turns a directory of .debs into a flat signed apt repository:
+# Packages, Packages.gz, Release, InRelease, Release.gpg and the public key.
+# Keeps the KEEP latest versions and deletes the other .debs from the directory.
 #
-# Ключ подписи берётся из текущего GPG-keyring (GNUPGHOME), парольная фраза —
-# из APT_SIGNING_KEY_PASSPHRASE, если задана.
+# The signing key comes from the current GPG keyring (GNUPGHOME), the passphrase
+# from APT_SIGNING_KEY_PASSPHRASE if set.
 set -euo pipefail
 
-dir=${1:?использование: make-repo.sh каталог-с-deb}
+dir=${1:?usage: make-repo.sh deb-directory}
 KEEP=${KEEP:-3}
 KEY_NAME=${KEY_NAME:-telegram-desktop-arm64.asc}
 cd "$dir"
 
-# сортировка по правилам версий Debian, новые первыми
+# sort by Debian version rules, newest first
 mapfile -t debs < <(
     for f in *.deb; do
         printf '%s\t%s\n' "$(dpkg-deb -f "$f" Version)" "$f"
     done | sort -t$'\t' -k1,1Vr | cut -f2
 )
-[ ${#debs[@]} -gt 0 ] || { echo "в $dir нет .deb" >&2; exit 1; }
+[ ${#debs[@]} -gt 0 ] || { echo "no .deb in $dir" >&2; exit 1; }
 for f in "${debs[@]:$KEEP}"; do
-    echo "Удаляю старую версию: $f" >&2
+    echo "Removing old version: $f" >&2
     rm -f "$f"
 done
 
@@ -52,6 +52,6 @@ gpg_sign() {
 gpg_sign --clearsign -o InRelease Release
 gpg_sign --armor --detach-sign -o Release.gpg Release
 gpg --batch --yes --armor --export -o "$KEY_NAME"
-[ -s "$KEY_NAME" ] || { echo "в keyring нет ключа подписи" >&2; exit 1; }
+[ -s "$KEY_NAME" ] || { echo "no signing key in the keyring" >&2; exit 1; }
 
 ls -l >&2

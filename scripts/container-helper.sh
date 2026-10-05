@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Выполняется ВНУТРИ контейнеров сборки (resolute и noble), на хосте не запускать.
-# /work/app  — распакованный snap
-# /work/libs — библиотеки, которые поедут в пакет
+# Runs INSIDE the build containers (resolute and noble); do not run on the host.
+# /work/app  — the unpacked snap
+# /work/libs — libraries that go into the package
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 
@@ -34,15 +34,15 @@ cmd_setup() {
     quiet apt-get update
     quiet apt-get install -y --no-install-recommends apt-file binutils
     quiet apt-file update
-    # Один проход по Contents вместо поиска на каждый soname: "пакет: путь"
+    # One pass over Contents instead of a search per soname: "package: path"
     apt-file search -x "^/usr/lib/$TRIPLET/.*\.so(\.|\$)" >"$INDEX"
 }
 
-# Пакет, в котором лежит soname. $2 = direct — только прямо в libdir (то, что
-# найдёт ld.so без LD_LIBRARY_PATH), any — в том числе в подкаталогах.
-# Если пакетов несколько (libavcodec60 / libavcodec-extra60, libegl1 /
-# libegl-mali-*), берём самый короткий путь, затем самое короткое имя пакета:
-# так выигрывает основной вариант, а не -extra и не вендорская замена.
+# The package that ships a soname. $2 = direct: only directly in libdir (what
+# ld.so finds without LD_LIBRARY_PATH); any: subdirectories too.
+# If there are several packages (libavcodec60 / libavcodec-extra60, libegl1 /
+# libegl-mali-*), pick the shortest path, then the shortest package name:
+# that way the main variant wins, not -extra or a vendor replacement.
 provider() {
     awk -F': ' -v so="$1" -v mode="$2" -v dir="/usr/lib/$TRIPLET/" '
         {
@@ -53,13 +53,13 @@ provider() {
         }' "$INDEX" | sort -k1,1n -k2,2n -k3,3 | head -n1 | cut -d' ' -f3
 }
 
-# soname'ы, которые не резолвятся ни из системы, ни из /work/libs
+# sonames that resolve neither from the system nor from /work/libs
 cmd_missing() {
     run_ldd | awk '/not found/ {print $1}' | sort -u
 }
 
-# resolute: поставить пакеты, в которых есть запрошенные soname'ы.
-# На stdout — soname'ы, которых в дистрибутиве нет.
+# resolute: install the packages that ship the requested sonames.
+# Prints to stdout the sonames the distribution does not have.
 cmd_provide() {
     local so pkg pkgs=()
     for so in "$@"; do
@@ -71,18 +71,18 @@ cmd_provide() {
         fi
     done
     if [ ${#pkgs[@]} -gt 0 ]; then
-        echo "resolute: ставлю ${pkgs[*]}" >&2
+        echo "resolute: installing ${pkgs[*]}" >&2
         quiet apt-get install -y --no-install-recommends -o Dpkg::Options::=--force-unsafe-io "${pkgs[@]}"
     fi
 }
 
-# noble: скачать .deb с запрошенными soname'ами и положить библиотеки в /work/libs
+# noble: download .debs with the requested sonames and put the libraries into /work/libs
 cmd_fetch() {
     local so pkg ver file tmp
     for so in "$@"; do
         pkg=$(provider "$so" any)
         if [ -z "$pkg" ]; then
-            echo "ОШИБКА: $so нет ни в целевой системе, ни в snap, ни в доноре" >&2
+            echo "ERROR: $so is not in the target system, the snap or the donor" >&2
             exit 1
         fi
         tmp=$(mktemp -d)
@@ -97,8 +97,8 @@ cmd_fetch() {
     done
 }
 
-# resolute: пакеты с системными библиотеками, от которых бинарь и забандленные
-# библиотеки зависят напрямую (DT_NEEDED). Транзитивные подтянет сам apt.
+# resolute: packages with the system libraries the binary and the bundled
+# libraries depend on directly (DT_NEEDED). apt pulls in transitive ones itself.
 cmd_depends() {
     local so p real
     local -A path=()
@@ -107,15 +107,15 @@ cmd_depends() {
     targets | xargs readelf -d | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p' | sort -u \
     | while read -r so; do
         p=${path[$so]:-}
-        [ -n "$p" ] || { echo "ОШИБКА: $so не резолвится" >&2; exit 1; }
+        [ -n "$p" ] || { echo "ERROR: $so does not resolve" >&2; exit 1; }
         case $p in /work/*) continue ;; esac
         real=$(realpath "$p")
         dpkg -S "$real" 2>/dev/null || dpkg -S "/usr$real" 2>/dev/null || dpkg -S "${real#/usr}" 2>/dev/null \
-            || { echo "ОШИБКА: не нашёл пакет для $p" >&2; exit 1; }
+            || { echo "ERROR: no package found for $p" >&2; exit 1; }
     done | cut -d: -f1 | sort -u
 }
 
-# какие из перечисленных пакетов существуют в дистрибутиве
+# which of the listed packages exist in the distribution
 cmd_existing() {
     local p
     for p in "$@"; do
@@ -123,7 +123,7 @@ cmd_existing() {
     done
 }
 
-# вернуть хосту владение файлами (в docker контейнер пишет от root)
+# give file ownership back to the host (in docker the container writes as root)
 cmd_chown() {
     chown -R --reference=/work/app /work/libs
     [ -e "$MANIFEST" ] && chown --reference=/work/app "$MANIFEST"
