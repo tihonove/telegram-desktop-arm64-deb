@@ -3,7 +3,11 @@
 #   1) a v<version> release with the package itself and the changelog;
 #   2) a release with the permanent "repo" tag: a flat apt repository.
 # Requires: gh (GH_TOKEN, GH_REPO or running inside a clone), an imported GPG key.
+# Runs only in GitHub Actions: every published package must be traceable to a
+# public workflow run.
 set -euo pipefail
+
+[ "${GITHUB_ACTIONS:-}" = true ] || { echo "ERROR: publishing is done only by GitHub Actions" >&2; exit 1; }
 
 deb=$(realpath "${1:?usage: publish.sh path/to/package.deb}")
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -47,6 +51,10 @@ done
     dpkg-deb -f "$deb" Package Version Architecture Installed-Size
     echo "SHA256: $(sha256sum "$deb" | cut -d' ' -f1)"
     echo "\`\`\`"
+    echo
+    snap_rev=$(dpkg-deb -f "$deb" Description | sed -n 's/.*snap revision \([^)]*\)).*/\1/p')
+    echo "Built and published by [workflow run $GITHUB_RUN_ID]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)"
+    echo "from commit $GITHUB_SHA; snap revision ${snap_rev:-unknown}."
     echo
     echo "<details><summary>Bundled libraries</summary>"
     echo

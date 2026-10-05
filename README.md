@@ -28,6 +28,24 @@ sudo apt install telegram-desktop-arm64
 
 After that, updates arrive with a regular `apt upgrade`.
 
+## Trust
+
+Packages are built and published **only by GitHub Actions**, never from anyone's
+machine:
+
+- the APT signing key exists only as an Actions secret of this repository, so
+  anything signed by it came out of a workflow run;
+- `scripts/publish.sh` refuses to run outside Actions;
+- every build runs the public code of this repository, and its logs are on the
+  [Actions tab](https://github.com/tihonove/telegram-desktop-arm64-deb/actions);
+- each `v<version>` release links to the exact workflow run and commit that
+  produced it, plus the snap revision it was repacked from;
+- the snap is downloaded from the official Snap Store and its sha3-384 is checked
+  against the store's; the Telegram binary is copied byte for byte, not rebuilt.
+
+To check it yourself, download the same snap revision, unpack it with
+`unsquashfs` and compare it with `/opt/telegram-desktop/app`.
+
 ## More
 
 - [Usage](docs/usage.md) — what gets installed, rollback, removal, migrating from a manual install, known issues
